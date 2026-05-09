@@ -1,0 +1,77 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb_checkpoints/
+
+# Environment variables
+.env
+.env.local
+
+# Data files (large PDFs)
+data/*.pdf
+data/**/*.pdf
+
+# Model checkpoints and artifacts
+artifacts/finetuned_model/
+artifacts/**/*.bin
+artifacts/**/*.safetensors
+artifacts/**/*.pt
+artifacts/**/*.pth
+*.gguf
+
+# Weaviate data
+.weaviate/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Large generated files
+*.parquet
+*.npz
+*.pkl
+*.pickle
+/uv.lock
