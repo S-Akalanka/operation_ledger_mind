@@ -1,14 +1,12 @@
 # Operation Ledger-Mind: The Financial Intelligence
 
-**AI Engineer Essentials - Mini Project 01**
-
 A comprehensive comparison of Parametric Memory (Fine-Tuning) vs Non-Parametric Memory (RAG) for financial document analysis using Uber's 2024 Annual Report.
 
 ## 🎯 Project Overview
 
 This project implements and evaluates two AI architectures for financial Q&A:
 
-1. **"The Intern" (Parametric Memory)**: Fine-tuned Llama-3-8B model with QLoRA
+1. **"The Intern" (Parametric Memory)**: Fine-tuned Llama-3.2-3B model fine-tuned using QLoRA
 2. **"The Librarian" (Non-Parametric Memory)**: Advanced Hybrid RAG system with Weaviate
 
 ## 📁 Project Structure
@@ -20,6 +18,7 @@ operation_ledger_mind/
 │   ├── 02_finetuning_intern.ipynb     # Fine-tuning with QLoRA
 │   ├── 03_rag_librarian.ipynb         # Hybrid RAG system
 │   └── 04_evaluation_arena.ipynb      # Comprehensive evaluation
+│   └── inference_utils.py             # Core inference logic for both AI
 ├── src/
 │   ├── config/
 │   │   └── config.yaml                # Configuration file
@@ -96,8 +95,9 @@ jupyter notebook notebooks/04_evaluation_arena.ipynb
 - **Output**: `train.jsonl` (80%) and `golden_test_set.jsonl` (20%)
 
 ### Notebook 02: The Intern (Fine-Tuning)
-- **Model**: Llama-3-8B-Instruct
-- **Quantization**: 4-bit NF4 with double quantization
+- **Model**: Llama-3.2-3B
+- **Quantization**: Optimized for 16-bit FP16 inference to ensure 
+numerical stability and native compatibility with NVIDIA T4 GPU architectures.
 - **Adapters**: LoRA (r=16, alpha=32)
 - **Training**: SFTTrainer with ~100 steps
 - **Output**: Trained adapters + `query_intern()` function
@@ -117,13 +117,6 @@ jupyter notebook notebooks/04_evaluation_arena.ipynb
 - **Hallucination Audit**: Analyzes number accuracy
 - **Cost Analysis**: AWS GPU vs API costs for 150k queries/month
 
-## 🎓 Learning Outcomes
-
-1. **Data Generation**: Create instruction datasets from raw documents
-2. **Fine-Tuning**: QLoRA for memory-efficient model adaptation
-3. **Advanced RAG**: Hybrid search with reranking for high precision
-4. **Evaluation**: Multi-metric assessment including cost-benefit
-
 ## 📈 Expected Results
 
 The evaluation will reveal:
@@ -134,7 +127,7 @@ The evaluation will reveal:
 
 ## 🛠️ Technologies Used
 
-- **LLMs**: Llama-3, GPT-4o-mini (via OpenRouter)
+- **LLMs**: Llama-3.2-3B, GPT-4o-mini (via OpenRouter)
 - **Fine-Tuning**: Hugging Face (`transformers`, `peft`, `trl`, `bitsandbytes`)
 - **RAG**: Weaviate, sentence-transformers, rank-bm25
 - **Evaluation**: rouge-score, LLM-as-Judge
@@ -163,22 +156,9 @@ Edit `src/config/config.yaml` to customize:
 ### For Notebook 03 (RAG):
 - Weaviate Embedded OR Weaviate Cloud account
 
-## 🏆 Submission Checklist
-
-- [ ] All 4 notebooks executed and tested
-- [ ] `train.jsonl` and `golden_test_set.jsonl` generated
-- [ ] Fine-tuned adapters saved
-- [ ] Evaluation results with visualizations
-- [ ] Engineering Report (PDF, 1500 words)
-- [ ] Full source code with folder structure preserved
-
-## 📄 License
-
-This project is for educational purposes as part of the AI Engineer Essentials course.
-
 ## 🤝 Acknowledgments
 
-- **Uber Technologies**: For the 2024 Annual Report
+- **Uber Technologies**: For the [2024 Annual Report](https://s23.q4cdn.com/407969754/files/doc_financials/2025/Stockholders2025/2024-Annual-Report.pdf)
 - **Hugging Face**: For model hosting and libraries
 - **Weaviate**: For vector database technology
 - **Anthropic/OpenAI**: For LLM APIs
