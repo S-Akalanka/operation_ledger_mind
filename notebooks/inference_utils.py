@@ -32,9 +32,9 @@ if not adapter_path.exists():
     print("⚠️  Using placeholder query_intern()")
 
 else:
-    print(f"📦 Loading from: {adapter_path}")
+    print(f"Loading from: {adapter_path}")
 
-    print("⏳ Loading base model...")
+    print("Loading base model...")
     base_model = AutoModelForCausalLM.from_pretrained(
         model_id,
         device_map={"": 0},
@@ -116,7 +116,7 @@ print("✅ LLM and embeddings initialized")
 
 # Connect to Weaviate
 try:
-    print("⏳ Starting Weaviate with extended startup period...")
+    print("Starting Weaviate with extended startup period...")
     client = weaviate.connect_to_embedded(version="latest")
 
     collection_name = "UberFinancials"

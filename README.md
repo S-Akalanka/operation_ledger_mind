@@ -6,7 +6,7 @@ A comprehensive comparison of Parametric Memory (Fine-Tuning) vs Non-Parametric 
 
 This project implements and evaluates two AI architectures for financial Q&A:
 
-1. **"The Intern" (Parametric Memory)**: Fine-tuned Llama-3.2-3B model fine-tuned using QLoRA
+1. **"The Intern" (Parametric Memory)**: Fine-tuned Llama-3.2-3B model fine-tuned using LoRA
 2. **"The Librarian" (Non-Parametric Memory)**: Advanced Hybrid RAG system with Weaviate
 
 ## 📁 Project Structure
@@ -15,7 +15,7 @@ This project implements and evaluates two AI architectures for financial Q&A:
 operation_ledger_mind/
 ├── notebooks/
 │   ├── 01_data_factory.ipynb          # Q&A dataset generation
-│   ├── 02_finetuning_intern.ipynb     # Fine-tuning with QLoRA
+│   ├── 02_finetuning_intern.ipynb     # Fine-tuning with LoRA
 │   ├── 03_rag_librarian.ipynb         # Hybrid RAG system
 │   └── 04_evaluation_arena.ipynb      # Comprehensive evaluation
 │   └── inference_utils.py             # Core inference logic for both AI
@@ -96,7 +96,7 @@ jupyter notebook notebooks/04_evaluation_arena.ipynb
 
 ### Notebook 02: The Intern (Fine-Tuning)
 - **Model**: Llama-3.2-3B
-- **Quantization**: Optimized for 16-bit FP16 inference to ensure 
+- **Fine-Tuning Method**: Standard LoRA (Low-Rank Adaptation)
 numerical stability and native compatibility with NVIDIA T4 GPU architectures.
 - **Adapters**: LoRA (r=16, alpha=32)
 - **Training**: SFTTrainer with ~100 steps
@@ -128,7 +128,7 @@ The evaluation will reveal:
 ## 🛠️ Technologies Used
 
 - **LLMs**: Llama-3.2-3B, GPT-4o-mini (via OpenRouter)
-- **Fine-Tuning**: Hugging Face (`transformers`, `peft`, `trl`, `bitsandbytes`)
+- **Fine-Tuning**: Hugging Face Parameter-Efficient Fine-Tuning (`transformers`, `peft`, `trl`)
 - **RAG**: Weaviate, sentence-transformers, rank-bm25
 - **Evaluation**: rouge-score, LLM-as-Judge
 - **Utilities**: pandas, matplotlib, seaborn
