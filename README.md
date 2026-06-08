@@ -74,7 +74,7 @@ Execute the notebooks in order:
 
 ```bash
 # 1. Generate Q&A dataset
-jupyter notebook notebooks/01_data_factory.ipynb
+jupyter notebook notebooks/01_data_factory1.ipynb
 
 # 2. Fine-tune model (requires GPU)
 jupyter notebook notebooks/02_finetuning_intern.ipynb
