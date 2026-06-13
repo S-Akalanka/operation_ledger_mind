@@ -77,7 +77,7 @@ Execute the notebooks in order:
 jupyter notebook notebooks/01_data_factory1.ipynb
 
 # 2. Fine-tune model (requires GPU)
-jupyter notebook notebooks/02_finetuning_intern.ipynb
+jupyter notebook notebooks/02_finetuning_intern_lora.ipynb
 
 # 3. Build RAG system
 jupyter notebook notebooks/03_rag_librarian.ipynb
