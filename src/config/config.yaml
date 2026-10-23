@@ -9,10 +9,10 @@ openrouter_provider: "openai" # Options: openai | google | anthropic | meta | mi
 openrouter_model: "gpt-4o-mini" # Model name without provider prefix
 
 # Direct provider settings (used when llm_provider != "openrouter")
-llm_model: "llama-3.1-8b-instant" # Model name for direct providers
+llm_model: "openai/gpt-oss-120b" # Model name for direct providers
 
 temperature: 0.2 # Lower for factual RAG, higher (0.7) for conversational
-max_tokens: 384
+max_tokens: 2048 # Reasoning models spend part of this on thinking before the answer
 request_timeout: 60 # seconds
 
 # Embedding Settings
