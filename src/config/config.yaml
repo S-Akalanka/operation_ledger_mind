@@ -10,6 +10,11 @@ openrouter_model: "gpt-4o-mini" # Model name without provider prefix
 
 # Direct provider settings (used when llm_provider != "openrouter")
 llm_model: "openai/gpt-oss-120b" # Model name for direct providers
+data_factory_model: "openai/gpt-oss-120b" # Q&A generation in notebook 01 (same provider as above)
+
+# Fine-tuning (notebook 02, runs on Colab/Kaggle T4)
+finetune_model: "unsloth/Llama-3.2-3B-Instruct" # Ungated copy of meta-llama/Llama-3.2-3B-Instruct
+adapter_name: "final_adapters_baseline" # Folder name the LoRA adapters are saved under
 
 temperature: 0.2 # Lower for factual RAG, higher (0.7) for conversational
 max_tokens: 2048 # Reasoning models spend part of this on thinking before the answer

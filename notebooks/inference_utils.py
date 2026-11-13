@@ -15,8 +15,8 @@ from peft import PeftModel
 from pathlib import Path
 
 # Model config
-model_id = "meta-llama/Llama-3.2-3B-Instruct"  # Same as Notebook 02
-adapter_path = Path(config['artifacts_root']) / "finetuned_model" / "final_adapters"
+model_id = config['finetune_model']  # Same as Notebook 02
+adapter_path = Path(config['artifacts_root']) / "finetuned_model" / config['adapter_name']
 
 # Check if adapters exist
 if not adapter_path.exists():
