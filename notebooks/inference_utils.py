@@ -20,7 +20,7 @@ adapter_path = Path(config['artifacts_root']) / "finetuned_model" / config['adap
 
 # Check if adapters exist
 if not adapter_path.exists():
-    print(f"❌ Adapters not found at {adapter_path}")
+    print(f"Adapters not found at {adapter_path}")
     print("   Please run Notebook 02 first!")
 
 
@@ -29,7 +29,7 @@ if not adapter_path.exists():
         return "[Error: Run Notebook 02 first to create fine-tuned model]"
 
 
-    print("⚠️  Using placeholder query_intern()")
+    print("Using placeholder query_intern()")
 
 else:
     print(f"Loading from: {adapter_path}")
@@ -48,11 +48,11 @@ else:
         tokenizer.pad_token = tokenizer.eos_token
         tokenizer.pad_token_id = tokenizer.eos_token_id
 
-    print("⏳ Loading fine-tuned adapters...")
+    print("Loading fine-tuned adapters...")
     # Load fine-tuned adapters
     model = PeftModel.from_pretrained(base_model, str(adapter_path))
 
-    print("✅ Model loaded!")
+    print("Model loaded!")
 
 
     # Define inference function
@@ -95,7 +95,7 @@ else:
         return response
 
 
-    print("✅ query_intern() ready!")
+    print("query_intern() ready!")
 
 # ============================================================
 # Load The Librarian (RAG System)
@@ -112,7 +112,7 @@ from src.services.llm_services import get_llm, get_text_embeddings
 llm = get_llm(config)
 embeddings = get_text_embeddings(config)
 
-print("✅ LLM and embeddings initialized")
+print("LLM and embeddings initialized")
 
 # Connect to Weaviate
 try:
@@ -123,16 +123,16 @@ try:
 
     # Check if collection exists
     if not client.collections.exists(collection_name):
-        print(f"❌ Collection '{collection_name}' not found")
+        print(f"Collection '{collection_name}' not found")
         print("   Please run Notebook 03 first!")
         raise Exception("RAG collection not found")
 
-    print(f"✅ Connected to collection: {collection_name}")
+    print(f"Connected to collection: {collection_name}")
 
     # Load reranker
-    print("⏳ Loading cross-encoder reranker...")
+    print("Loading cross-encoder reranker...")
     reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
-    print("✅ Reranker loaded")
+    print("Reranker loaded")
 
 
     # Define search functions
@@ -255,11 +255,11 @@ Answer:'''
         return answer
 
 
-    print("✅ query_librarian() ready!")
+    print("query_librarian() ready!")
 
 except Exception as e:
     raise e
-    # print(f"❌ Error loading RAG system: {e}")
+    # print(f"Error loading RAG system: {e}")
     # print("   Please run Notebook 03 first!")
     #
     #
@@ -273,4 +273,4 @@ except Exception as e:
     #     return "[Error: Run Notebook 03 first]"
     #
     #
-    # print("⚠️  Using placeholder query_librarian()")
+    # print("Using placeholder query_librarian()")
