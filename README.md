@@ -1,63 +1,56 @@
 # Operation Ledger-Mind: The Financial Intelligence
 
-A comprehensive comparison of Parametric Memory (Fine-Tuning) vs Non-Parametric Memory (RAG) for financial document analysis using Uber's 2024 Annual Report.
+A comparison of Parametric Memory (Fine-Tuning) vs Non-Parametric Memory (RAG) for financial document analysis using Uber's 2024 Annual Report.
 
-## 🎯 Project Overview
+## Project Overview
 
-This project implements and evaluates two AI architectures for financial Q&A:
+This project implements and evaluates two approaches to financial Q&A on the same base model (Llama-3.2-3B-Instruct):
 
-1. **"The Intern" (Parametric Memory)**: Fine-tuned Llama-3.2-3B model fine-tuned using LoRA
-2. **"The Librarian" (Non-Parametric Memory)**: Advanced Hybrid RAG system with Weaviate
+1. **Fine-tuned (Parametric Memory)**: the base model fine-tuned on generated Q&A pairs with QLoRA
+2. **RAG (Non-Parametric Memory)**: the same base model answering from a hybrid retrieval pipeline on Weaviate
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 operation_ledger_mind/
 ├── notebooks/
-│   ├── 01_data_factory.ipynb          # Q&A dataset generation
-│   ├── 02_finetuning_intern.ipynb     # Fine-tuning with LoRA
-│   ├── 03_rag_librarian.ipynb         # Hybrid RAG system
-│   └── 04_evaluation_arena.ipynb      # Comprehensive evaluation
-│   └── inference_utils.py             # Core inference logic for both AI
+│   ├── 01_data_factory.ipynb          # Chunking + Q&A dataset generation
+│   ├── 02_finetuning.ipynb       # QLoRA fine-tuning (Colab/Kaggle T4)
+│   ├── 03_rag.ipynb                   # Hybrid RAG index
+│   ├── 04_evaluation.ipynb            # Fine-tuned vs RAG evaluation
+│   ├── inference_utils.py             # Loads both systems on one base model
+│   └── artifacts/
+│       ├── chunks.jsonl               # Chunks from notebook 01, indexed by notebook 03
+│       ├── data_factory/
+│       │   ├── raw_pairs.jsonl
+│       │   ├── train.jsonl
+│       │   └── golden_test_set.jsonl
+│       └── adapters/                  # LoRA adapters from notebook 02
 ├── src/
 │   ├── config/
 │   │   └── config.yaml                # Configuration file
-│   ├── services/
-│   │   └── llm_services.py            # LLM and embedding services
-│   └── utils/
-│       ├── pdf_utils.py               # PDF processing utilities
-│       └── eval_utils.py              # Evaluation utilities
+│   └── services/
+│       └── llm_services.py            # LLM and embedding services
 ├── data/
 │   └── 2024-Annual-Report.pdf         # Uber's annual report (place here)
-├── artifacts/                         # Generated artifacts
-│   ├── data_factory/
-│   │   ├── train.jsonl
-│   │   ├── golden_test_set.jsonl
-│   │   └── chunks.txt
-│   ├── finetuned_model/               # Fine-tuned adapters
-│   └── evaluation/                    # Evaluation results
-├── requirements.txt                   # Python dependencies
-└── README.md                          # This file
+├── pyproject.toml
+└── README.md
 ```
 
-## 🚀 Quick Start
+## Quick Start
 
 ### 1. Environment Setup
 
 ```bash
-# Clone or download the project
 cd operation_ledger_mind
 
 # Install dependencies
-pip install -r requirements.txt
+uv sync
 
 # Create .env file with API keys
 cat > .env << EOF
-OPENROUTER_API_KEY=your_openrouter_key
+GROQ_API_KEY=your_groq_key
 HF_TOKEN=your_huggingface_token
-# Optional: for Weaviate Cloud
-WEAVIATE_URL=your_weaviate_url
-WEAVIATE_API_KEY=your_weaviate_key
 EOF
 ```
 
@@ -72,97 +65,65 @@ cp /path/to/uber-2024-annual-report.pdf data/2024-Annual-Report.pdf
 
 Execute the notebooks in order:
 
-```bash
-# 1. Generate Q&A dataset
-jupyter notebook notebooks/01_data_factory1.ipynb
+1. `01_data_factory.ipynb`: generate the Q&A dataset (Groq API)
+2. `02_finetuning.ipynb`: fine-tune on a T4 (Colab or Kaggle), then copy the adapters to `notebooks/artifacts/adapters/`
+3. `03_rag.ipynb`: build the Weaviate index (Linux or Mac; embedded Weaviate does not run on Windows)
+4. `04_evaluation.ipynb`: evaluate and compare
 
-# 2. Fine-tune model (requires GPU)
-jupyter notebook notebooks/02_finetuning_intern_lora.ipynb
-
-# 3. Build RAG system
-jupyter notebook notebooks/03_rag_librarian.ipynb
-
-# 4. Evaluate and compare
-jupyter notebook notebooks/04_evaluation_arena.ipynb
-```
-
-## 📊 Key Features
+## Key Features
 
 ### Notebook 01: Data Factory
-- **PDF Processing**: Extracts and chunks Uber's annual report
-- **Dual-LLM Pipeline**: Generates 10 Q&A pairs per chunk
-- **Question Categories**: Hard Facts, Strategic Summaries, Stylistic/Creative
-- **Output**: `train.jsonl` (80%) and `golden_test_set.jsonl` (20%)
+- **PDF Processing**: Extracts text per page and tables as row chunks with their headings
+- **Q&A Generation**: Up to 3 Q&A pairs per chunk with `openai/gpt-oss-120b` on Groq
+- **Resumable**: Saves after every chunk and stops cleanly on the daily rate limit
+- **Output**: `train.jsonl` (80%) and `golden_test_set.jsonl` (20%), split by chunk
 
-### Notebook 02: The Intern (Fine-Tuning)
-- **Model**: Llama-3.2-3B
-- **Fine-Tuning Method**: Standard LoRA (Low-Rank Adaptation)
-numerical stability and native compatibility with NVIDIA T4 GPU architectures.
-- **Adapters**: LoRA (r=16, alpha=32)
-- **Training**: SFTTrainer with ~100 steps
-- **Output**: Trained adapters + `query_intern()` function
+### Notebook 02: Fine-Tuning
+- **Model**: `unsloth/Llama-3.2-3B-Instruct`
+- **Method**: QLoRA (4-bit NF4 base, FP16 compute on T4)
+- **Adapters**: LoRA (r=16, alpha=32) on the attention projections
+- **Training**: TRL `SFTTrainer`, 3 epochs
+- **Output**: LoRA adapters
 
-### Notebook 03: The Librarian (RAG)
-- **Vector DB**: Weaviate (Embedded or Cloud)
+### Notebook 03: RAG
+- **Vector DB**: Weaviate Embedded
 - **Hybrid Search**: Dense vectors (embeddings) + BM25 (keyword)
 - **Fusion**: Reciprocal Rank Fusion (RRF)
 - **Reranking**: Cross-encoder (ms-marco-MiniLM-L-6-v2)
-- **Output**: `query_librarian()` function
 
-### Notebook 04: Evaluation Arena
+### Notebook 04: Evaluation
+- **Fair setup**: both systems use the same base model, system prompt and greedy decoding; RAG runs with the adapters disabled
 - **Metrics**:
   - ROUGE-L: Textual overlap
-  - LLM-as-Judge: Faithfulness & Accuracy (1-5 scale)
+  - LLM-as-Judge: Accuracy (1-5 scale), `openai/gpt-oss-120b` at temperature 0
   - Latency: Response time in milliseconds
-- **Hallucination Audit**: Analyzes number accuracy
-- **Cost Analysis**: AWS GPU vs API costs for 150k queries/month
+  - Retrieval hit rate: whether RAG retrieved the chunk each test question came from
+- **Cost Analysis**: GPU serving cost, plus the vector DB for RAG
 
-## 📈 Expected Results
+## Technologies Used
 
-The evaluation will reveal:
-- **Accuracy**: Which system is more factually correct?
-- **Faithfulness**: Which stays true to the source material?
-- **Latency**: Which responds faster?
-- **Cost**: Which is more economical at scale?
-
-## 🛠️ Technologies Used
-
-- **LLMs**: Llama-3.2-3B, GPT-4o-mini (via OpenRouter)
-- **Fine-Tuning**: Hugging Face Parameter-Efficient Fine-Tuning (`transformers`, `peft`, `trl`)
-- **RAG**: Weaviate, sentence-transformers, rank-bm25
+- **LLMs**: Llama-3.2-3B-Instruct, gpt-oss-120b (via Groq)
+- **Fine-Tuning**: `transformers`, `peft`, `trl`, `bitsandbytes`
+- **RAG**: Weaviate, sentence-transformers
 - **Evaluation**: rouge-score, LLM-as-Judge
-- **Utilities**: pandas, matplotlib, seaborn
+- **Utilities**: pandas, matplotlib
 
-## ⚙️ Configuration
+## Configuration
 
 Edit `src/config/config.yaml` to customize:
-- LLM provider and model
+- LLM provider and models (`llm_model`, `data_factory_model`, `finetune_model`)
 - Embedding model
-- Chunk size and overlap
-- Fine-tuning hyperparameters
-- RAG retrieval parameters
+- Adapter folder name (`adapter_name`)
 
-## 📝 Requirements
+## Requirements
 
-### For All Notebooks:
-- Python 3.9+
-- API access to LLM provider (OpenRouter recommended)
-- HuggingFace account (for model downloads)
+- Python 3.10+
+- Groq API key (data factory and judge)
+- **Notebook 02**: NVIDIA GPU, e.g. a free Colab or Kaggle T4
+- **Notebooks 03-04**: Linux or Mac (embedded Weaviate); notebook 04 runs on CUDA, Apple MPS or CPU
 
-### For Notebook 02 (Fine-Tuning):
-- GPU with 16GB+ VRAM (e.g., T4, A10G, RTX 4090)
-- Google Colab Pro or similar (if not local GPU)
-
-### For Notebook 03 (RAG):
-- Weaviate Embedded OR Weaviate Cloud account
-
-## 🤝 Acknowledgments
+## Acknowledgments
 
 - **Uber Technologies**: For the [2024 Annual Report](https://s23.q4cdn.com/407969754/files/doc_financials/2025/Stockholders2025/2024-Annual-Report.pdf)
 - **Hugging Face**: For model hosting and libraries
 - **Weaviate**: For vector database technology
-- **Anthropic/OpenAI**: For LLM APIs
-
----
-
-**Note**: This README assumes you're running in a Colab/Jupyter environment with appropriate GPU access for fine-tuning.

@@ -1,276 +1,137 @@
+"""
+Loads both systems for Notebook 04 on ONE base model so the only difference is the method:
+- Fine-tuned: base Llama + LoRA adapters, no retrieval
+- RAG:        same base Llama with adapters disabled, answering from retrieved context
+Both use the same system prompt, decoding settings and token budget.
+"""
+from pathlib import Path
 
-from src.services.llm_services import load_config
+import torch
+import weaviate
+from peft import PeftModel
+from sentence_transformers import CrossEncoder
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+from src.services.llm_services import load_config, get_text_embeddings
 
 config = load_config("../src/config/config.yaml")
 
+SYSTEM_PROMPT = "You are a financial analyst trained on Uber's 2024 Annual Report."  # same as Notebook 02
+MAX_NEW_TOKENS = 256
+
 # ============================================================
-# Load The Intern (Fine-Tuned Model)
+# Shared base model + adapters
 # ============================================================
 
-print("Loading The Intern (Fine-Tuned Model)...")
-
-import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM
-from peft import PeftModel
-from pathlib import Path
-
-# Model config
-model_id = config['finetune_model']  # Same as Notebook 02
-adapter_path = Path(config['artifacts_root']) / "finetuned_model" / config['adapter_name']
-
-# Check if adapters exist
-if not adapter_path.exists():
-    print(f"Adapters not found at {adapter_path}")
-    print("   Please run Notebook 02 first!")
-
-
-    # Placeholder function
-    def query_intern(question):
-        return "[Error: Run Notebook 02 first to create fine-tuned model]"
-
-
-    print("Using placeholder query_intern()")
-
+if torch.cuda.is_available():
+    device, dtype = "cuda", torch.float16
+elif torch.backends.mps.is_available():
+    device, dtype = "mps", torch.float16
 else:
-    print(f"Loading from: {adapter_path}")
+    device, dtype = "cpu", torch.float32
 
-    print("Loading base model...")
-    base_model = AutoModelForCausalLM.from_pretrained(
-        model_id,
-        device_map={"": 0},
-        dtype=torch.float16,
-        attn_implementation="eager"
-    )
+model_id = config['finetune_model']
+adapter_path = Path(config['artifacts_root']) / "adapters" / config['adapter_name']
+if not adapter_path.exists():
+    raise FileNotFoundError(f"Adapters not found at {adapter_path}, run Notebook 02 and copy them here")
 
-    # Load tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(model_id)
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
-        tokenizer.pad_token_id = tokenizer.eos_token_id
-
-    print("Loading fine-tuned adapters...")
-    # Load fine-tuned adapters
-    model = PeftModel.from_pretrained(base_model, str(adapter_path))
-
-    print("Model loaded!")
+print(f"Loading {model_id} on {device}...")
+tokenizer = AutoTokenizer.from_pretrained(model_id)
+base_model = AutoModelForCausalLM.from_pretrained(model_id, dtype=dtype, attn_implementation="eager").to(device)
+model = PeftModel.from_pretrained(base_model, str(adapter_path))
+model.eval()
+print(f"Adapters loaded from {adapter_path}")
 
 
-    # Define inference function
-    def query_intern(question, max_new_tokens=256):
-        """Query the fine-tuned Intern model."""
-        messages = [
-            {
-                "role": "system",
-                "content": "You are a financial analyst trained on Uber's 2024 Annual Report."
-            },
-            {"role": "user", "content": question}
-        ]
+def generate(user_content, use_adapter):
+    """Greedy decoding, so both systems are deterministic and comparable."""
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": user_content},
+    ]
+    inputs = tokenizer.apply_chat_template(
+        messages, add_generation_prompt=True, return_tensors="pt", return_dict=True
+    ).to(device)
 
-        prompt = tokenizer.apply_chat_template(
-            messages,
-            tokenize=False,
-            add_generation_prompt=True
-        )
+    settings = dict(max_new_tokens=MAX_NEW_TOKENS, do_sample=False, pad_token_id=tokenizer.eos_token_id)
+    with torch.no_grad():
+        if use_adapter:
+            outputs = model.generate(**inputs, **settings)
+        else:
+            with model.disable_adapter():
+                outputs = model.generate(**inputs, **settings)
 
-        inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=1024)
-        inputs = {k: v.to(model.device) for k, v in inputs.items()}
-
-        with torch.no_grad():
-            outputs = model.generate(
-                **inputs,
-                max_new_tokens=max_new_tokens,
-                temperature=0.1,
-                do_sample=True,
-                top_p=0.9,
-                pad_token_id=tokenizer.pad_token_id,
-                eos_token_id=tokenizer.eos_token_id
-            )
-
-        response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-
-        # Extract assistant's response
-        if "assistant" in response:
-            response = response.split("assistant")[-1].strip()
-
-        return response
+    new_tokens = outputs[0][inputs["input_ids"].shape[-1]:]
+    return tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
 
 
-    print("query_intern() ready!")
+def query_finetuned(question):
+    """Fine-tuned model answering from memory."""
+    return generate(question, use_adapter=True)
+
 
 # ============================================================
-# Load The Librarian (RAG System)
+# RAG: index from Notebook 03
 # ============================================================
 
-print("Loading The Librarian (RAG System)...")
-
-import weaviate
-from sentence_transformers import CrossEncoder
-
-# Initialize LLM and embeddings
-from src.services.llm_services import get_llm, get_text_embeddings
-
-llm = get_llm(config)
 embeddings = get_text_embeddings(config)
 
-print("LLM and embeddings initialized")
+client = weaviate.connect_to_embedded(version="1.27.3")  # same version Notebook 03 indexed with
+collection_name = "UberFinancials"
+if not client.collections.exists(collection_name):
+    raise RuntimeError(f"Collection '{collection_name}' not found, run Notebook 03 first")
+collection = client.collections.get(collection_name)
 
-# Connect to Weaviate
-try:
-    print("Starting Weaviate with extended startup period...")
-    client = weaviate.connect_to_embedded(version="latest")
-
-    collection_name = "UberFinancials"
-
-    # Check if collection exists
-    if not client.collections.exists(collection_name):
-        print(f"Collection '{collection_name}' not found")
-        print("   Please run Notebook 03 first!")
-        raise Exception("RAG collection not found")
-
-    print(f"Connected to collection: {collection_name}")
-
-    # Load reranker
-    print("Loading cross-encoder reranker...")
-    reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
-    print("Reranker loaded")
+reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
 
 
-    # Define search functions
-    def dense_search(query, top_k=10):
-        """Dense vector search."""
-        query_vector = embeddings.embed_query(query)
-        collection = client.collections.get(collection_name)
-
-        response = collection.query.near_vector(
-            near_vector=query_vector,
-            limit=top_k,
-            return_metadata=['distance']
-        )
-
-        results = []
-        for obj in response.objects:
-            results.append({
-                'chunk_id': obj.properties['chunk_id'],
-                'text': obj.properties['text'],
-                'score': 1 - obj.metadata.distance
-            })
-        return results
+def dense_search(query, top_k=10):
+    response = collection.query.near_vector(
+        near_vector=embeddings.embed_query(query), limit=top_k, return_metadata=['distance']
+    )
+    return [{'chunk_id': o.properties['chunk_id'], 'text': o.properties['text']} for o in response.objects]
 
 
-    def bm25_search(query, top_k=10):
-        """BM25 keyword search."""
-        collection = client.collections.get(collection_name)
-        response = collection.query.bm25(query=query, limit=top_k)
-
-        results = []
-        for obj in response.objects:
-            results.append({
-                'chunk_id': obj.properties['chunk_id'],
-                'text': obj.properties['text'],
-                'score': obj.metadata.score if obj.metadata.score else 0.0
-            })
-        return results
+def bm25_search(query, top_k=10):
+    response = collection.query.bm25(query=query, limit=top_k)
+    return [{'chunk_id': o.properties['chunk_id'], 'text': o.properties['text']} for o in response.objects]
 
 
-    def reciprocal_rank_fusion(dense_results, bm25_results, k=60):
-        """Combine dense and BM25 results using RRF."""
-        rrf_scores = {}
-
-        # Add dense results
-        for rank, result in enumerate(dense_results, 1):
-            cid = result['chunk_id']
-            if cid not in rrf_scores:
-                rrf_scores[cid] = {
-                    'text': result['text'],
-                    'chunk_id': cid,
-                    'rrf_score': 0.0
-                }
-            rrf_scores[cid]['rrf_score'] += 1 / (k + rank)
-
-        # Add BM25 results
-        for rank, result in enumerate(bm25_results, 1):
-            cid = result['chunk_id']
-            if cid not in rrf_scores:
-                rrf_scores[cid] = {
-                    'text': result['text'],
-                    'chunk_id': cid,
-                    'rrf_score': 0.0
-                }
-            rrf_scores[cid]['rrf_score'] += 1 / (k + rank)
-
-        return sorted(rrf_scores.values(), key=lambda x: x['rrf_score'], reverse=True)
+def reciprocal_rank_fusion(*result_lists, k=60):
+    fused = {}
+    for results in result_lists:
+        for rank, r in enumerate(results, 1):
+            entry = fused.setdefault(r['chunk_id'], {**r, 'rrf_score': 0.0})
+            entry['rrf_score'] += 1 / (k + rank)
+    return sorted(fused.values(), key=lambda x: x['rrf_score'], reverse=True)
 
 
-    def rerank(query, candidates, top_k=5):
-        """Rerank candidates using cross-encoder."""
-        if not candidates:
-            return []
-
-        pairs = [[query, c['text']] for c in candidates]
-        scores = reranker.predict(pairs)
-
-        for candidate, score in zip(candidates, scores):
-            candidate['rerank_score'] = float(score)
-
-        return sorted(candidates, key=lambda x: x['rerank_score'], reverse=True)[:top_k]
+def rerank(query, candidates, top_k=5):
+    if not candidates:
+        return []
+    scores = reranker.predict([[query, c['text']] for c in candidates])
+    for c, s in zip(candidates, scores):
+        c['rerank_score'] = float(s)
+    return sorted(candidates, key=lambda x: x['rerank_score'], reverse=True)[:top_k]
 
 
-    # Define main query function
-    def query_librarian(question, return_sources=False):
-        """
-        Complete RAG pipeline: Hybrid Search → RRF → Rerank → Generate
-        """
-        # Step 1: Hybrid retrieval
-        dense = dense_search(question, top_k=10)
-        bm25 = bm25_search(question, top_k=10)
+def query_rag(question, return_sources=False):
+    """Hybrid search -> RRF -> rerank -> base model answers from context."""
+    fused = reciprocal_rank_fusion(dense_search(question), bm25_search(question))
+    sources = rerank(question, fused, top_k=5)
+    context = "\n\n---\n\n".join(s['text'] for s in sources)
 
-        # Step 2: Reciprocal Rank Fusion
-        fused = reciprocal_rank_fusion(dense, bm25)
-
-        # Step 3: Cross-encoder reranking
-        reranked = rerank(question, fused, top_k=5)
-
-        # Step 4: Build context
-        context = "\\n\\n---\\n\\n".join([r['text'] for r in reranked])
-
-        # Step 5: Generate answer
-        prompt = f'''Answer based ONLY on context from Uber's 2024 Annual Report.
+    prompt = f"""Answer the question using ONLY the context below from Uber's 2024 Annual Report.
 
 Context:
 {context}
 
-Question: {question}
+Question: {question}"""
 
-Answer:'''
-
-        response = llm.invoke(prompt)
-        answer = response.content
-
-        if return_sources:
-            return {
-                'answer': answer,
-                'sources': reranked,
-                'context': context
-            }
-        return answer
+    answer = generate(prompt, use_adapter=False)
+    if return_sources:
+        return {'answer': answer, 'sources': sources, 'context': context}
+    return answer
 
 
-    print("query_librarian() ready!")
-
-except Exception as e:
-    raise e
-    # print(f"Error loading RAG system: {e}")
-    # print("   Please run Notebook 03 first!")
-    #
-    #
-    # # Placeholder function
-    # def query_librarian(question, return_sources=False):
-    #     if return_sources:
-    #         return {
-    #             'answer': "[Error: Run Notebook 03 first]",
-    #             'context': ''
-    #         }
-    #     return "[Error: Run Notebook 03 first]"
-    #
-    #
-    # print("Using placeholder query_librarian()")
+print("query_finetuned() and query_rag() ready")
