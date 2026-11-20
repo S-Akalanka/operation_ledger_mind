@@ -38,6 +38,7 @@ if not adapter_path.exists():
 print(f"Loading {model_id} on {device}...")
 tokenizer = AutoTokenizer.from_pretrained(model_id)
 base_model = AutoModelForCausalLM.from_pretrained(model_id, dtype=dtype, attn_implementation="eager").to(device)
+base_model.generation_config.max_length = None
 model = PeftModel.from_pretrained(base_model, str(adapter_path))
 model.eval()
 print(f"Adapters loaded from {adapter_path}")
