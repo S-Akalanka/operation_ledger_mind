@@ -71,3 +71,6 @@ langchain-text-splitters>=0.0.1
 packaging>=23.0
 
 pymupdf==1.27.1
+
+# Chat app
+streamlit>=1.40.0

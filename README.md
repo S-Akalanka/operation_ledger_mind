@@ -15,7 +15,7 @@ This project implements and evaluates two approaches to financial Q&A on the sam
 operation_ledger_mind/
 ├── notebooks/
 │   ├── 01_data_factory.ipynb          # Chunking + Q&A dataset generation
-│   ├── 02_finetuning.ipynb       # QLoRA fine-tuning (Colab/Kaggle T4)
+│   ├── 02_finetuning.ipynb            # QLoRA fine-tuning (Colab/Kaggle T4)
 │   ├── 03_rag.ipynb                   # Hybrid RAG index
 │   ├── 04_evaluation.ipynb            # Fine-tuned vs RAG evaluation
 │   ├── inference_utils.py             # Loads both systems on one base model
@@ -33,6 +33,7 @@ operation_ledger_mind/
 │       └── llm_services.py            # LLM and embedding services
 ├── data/
 │   └── 2024-Annual-Report.pdf         # Uber's annual report (place here)
+├── app.py                             # Streamlit chat: fine-tuned or RAG
 ├── pyproject.toml
 └── README.md
 ```
@@ -70,19 +71,29 @@ Execute the notebooks in order:
 3. `03_rag.ipynb`: build the Weaviate index (Linux or Mac; embedded Weaviate does not run on Windows)
 4. `04_evaluation.ipynb`: evaluate and compare
 
+### 4. Chat App
+
+After notebooks 02 and 03, chat with either system:
+
+```bash
+uv run streamlit run app.py
+```
+
+Pick **RAG** or **Fine-tuned** in the sidebar. RAG answers show the report pages they came from. Stop any running Notebook 04 kernel first, since both start the same embedded Weaviate.
+
 ## Key Features
 
 ### Notebook 01: Data Factory
 - **PDF Processing**: Extracts text per page and tables as row chunks with their headings
 - **Q&A Generation**: Up to 3 Q&A pairs per chunk with `openai/gpt-oss-120b` on Groq
 - **Resumable**: Saves after every chunk and stops cleanly on the daily rate limit
-- **Output**: `train.jsonl` (80%) and `golden_test_set.jsonl` (20%), split by chunk
+- **Output**: `train.jsonl` and `golden_test_set.jsonl` (~20%): one pair held out from each test chunk, so test questions are new but cover pages seen in training
 
 ### Notebook 02: Fine-Tuning
 - **Model**: `unsloth/Llama-3.2-3B-Instruct`
 - **Method**: QLoRA (4-bit NF4 base, FP16 compute on T4)
-- **Adapters**: LoRA (r=16, alpha=32) on the attention projections
-- **Training**: TRL `SFTTrainer`, 3 epochs
+- **Adapters**: LoRA (r=16, alpha=32) on the attention and MLP projections
+- **Training**: TRL `SFTTrainer`, 3 epochs, loss on answers only (prompt/completion format)
 - **Output**: LoRA adapters
 
 ### Notebook 03: RAG
@@ -92,13 +103,12 @@ Execute the notebooks in order:
 - **Reranking**: Cross-encoder (ms-marco-MiniLM-L-6-v2)
 
 ### Notebook 04: Evaluation
-- **Fair setup**: both systems use the same base model, system prompt and greedy decoding; RAG runs with the adapters disabled
+- **Fair setup**: both systems use the same base model, system prompt, answer style and greedy decoding; RAG runs with the adapters disabled
 - **Metrics**:
   - ROUGE-L: Textual overlap
   - LLM-as-Judge: Accuracy (1-5 scale), `openai/gpt-oss-120b` at temperature 0
   - Latency: Response time in milliseconds
   - Retrieval hit rate: whether RAG retrieved the chunk each test question came from
-- **Cost Analysis**: GPU serving cost, plus the vector DB for RAG
 
 ## Technologies Used
 
