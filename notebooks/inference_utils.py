@@ -14,7 +14,9 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from src.services.llm_services import load_config, get_text_embeddings
 
-config = load_config("../src/config/config.yaml")
+# Paths resolve from this file, so it works from Notebook 04 and from app.py at the repo root
+NOTEBOOKS_DIR = Path(__file__).resolve().parent
+config = load_config(str(NOTEBOOKS_DIR.parent / "src" / "config" / "config.yaml"))
 
 SYSTEM_PROMPT = "You are a financial analyst trained on Uber's 2024 Annual Report."  # same as Notebook 02
 MAX_NEW_TOKENS = 256
@@ -31,14 +33,21 @@ else:
     device, dtype = "cpu", torch.float32
 
 model_id = config['finetune_model']
-adapter_path = Path(config['artifacts_root']) / "adapters" / config['adapter_name']
+adapter_path = NOTEBOOKS_DIR / config['artifacts_root'] / "adapters" / config['adapter_name']
 if not adapter_path.exists():
     raise FileNotFoundError(f"Adapters not found at {adapter_path}, run Notebook 02 and copy them here")
 
 print(f"Loading {model_id} on {device}...")
 tokenizer = AutoTokenizer.from_pretrained(model_id)
-base_model = AutoModelForCausalLM.from_pretrained(model_id, dtype=dtype, attn_implementation="eager").to(device)
-base_model.generation_config.max_length = None
+# sdpa: PyTorch's fused attention kernel, same math as "eager" but faster and lighter on memory
+base_model = AutoModelForCausalLM.from_pretrained(model_id, dtype=dtype, attn_implementation="sdpa").to(device)
+
+# Clear Llama's shipped sampling defaults: we decode greedily with max_new_tokens only
+gen_config = base_model.generation_config
+gen_config.max_length = None
+gen_config.do_sample = False
+gen_config.temperature = None
+gen_config.top_p = None
 model = PeftModel.from_pretrained(base_model, str(adapter_path))
 model.eval()
 print(f"Adapters loaded from {adapter_path}")
@@ -86,16 +95,21 @@ collection = client.collections.get(collection_name)
 reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
 
 
-def dense_search(query, top_k=10):
+# Each search returns 20 candidates so the reranker has a wider pool to pick the top 5 from
+def dense_search(query, top_k=20):
     response = collection.query.near_vector(
         near_vector=embeddings.embed_query(query), limit=top_k, return_metadata=['distance']
     )
-    return [{'chunk_id': o.properties['chunk_id'], 'text': o.properties['text']} for o in response.objects]
+    return [to_result(o) for o in response.objects]
 
 
-def bm25_search(query, top_k=10):
+def bm25_search(query, top_k=20):
     response = collection.query.bm25(query=query, limit=top_k)
-    return [{'chunk_id': o.properties['chunk_id'], 'text': o.properties['text']} for o in response.objects]
+    return [to_result(o) for o in response.objects]
+
+
+def to_result(obj):
+    return {'chunk_id': obj.properties['chunk_id'], 'text': obj.properties['text'], 'page': obj.properties.get('page')}
 
 
 def reciprocal_rank_fusion(*result_lists, k=60):
@@ -122,7 +136,10 @@ def query_rag(question, return_sources=False):
     sources = rerank(question, fused, top_k=5)
     context = "\n\n---\n\n".join(s['text'] for s in sources)
 
+    # Same answer style the fine-tuned model learned from the training data
     prompt = f"""Answer the question using ONLY the context below from Uber's 2024 Annual Report.
+Answer in 1-3 complete sentences that restate the subject of the question and include exact figures with units.
+If the context does not contain the answer, say so.
 
 Context:
 {context}
